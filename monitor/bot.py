@@ -240,6 +240,7 @@ class Bot:
     def cmd_resend(self, arg):
         n = self.storage.forget_unsent()
         self.state.data["initialized_sources"] = []
+        self.state.data["resend_seq"] = self.state.data.get("resend_seq", 0) + 1  # сигнал для Mac
         self.state.save()
         self.check_now.set()
         return (f"Хорошо. При следующей проверке пришлю актуальные торги по текущим словам и регионам "

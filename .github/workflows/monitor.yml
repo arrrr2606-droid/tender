@@ -17,7 +17,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -45,7 +45,10 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python -m monitor.main --once
+          EIS_ELSEWHERE: "1"
+        # ЕИС и torgi.gov.ru не открываются с зарубежных серверов GitHub — их проверяет Mac
+        # (scripts/install_mac.sh). Здесь — остальные площадки и команды бота.
+        run: python -m monitor.main --once --only b2b,fabrikant,fedresurs
 
       - name: Сохранить базу лотов
         if: always()

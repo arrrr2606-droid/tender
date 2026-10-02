@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import re
 import sys
 
@@ -21,6 +22,8 @@ from .telegram import Telegram, format_lot
 
 log = logging.getLogger("monitor")
 ALERT_AFTER_FAILS = 3
+# ЕИС проверяет другой исполнитель (Mac) — дубли закупок ЕИС с Фабриканта здесь не присылаем
+EIS_ELSEWHERE = os.environ.get("EIS_ELSEWHERE") == "1"
 FIRST_RUN_MAX = 40      # сколько уже открытых торгов прислать при первом подключении площадки
 
 
@@ -76,6 +79,8 @@ async def run_cycle(cfg, state, storage, tg, dry_run=False):
         for lot in lots:
             if not dry_run and storage.is_seen(lot):
                 continue
+            if EIS_ELSEWHERE and lot.eis_number and lot.source != "eis":
+                continue  # закупку из ЕИС пришлёт исполнитель, который проверяет ЕИС (Mac)
             ok, _why = matcher.check(lot, state, cfg)
             if ok:
                 fresh.append(lot)
@@ -117,14 +122,15 @@ async def run_cycle(cfg, state, storage, tg, dry_run=False):
         log.info("%s: в выдаче %d, новых подходящих %d, отправлено %d", src.title, len(lots), matched, sent)
 
 
-async def run_once(cfg, state, storage, tg):
+async def run_once(cfg, state, storage, tg, commands=True):
     """Один проход (для запуска по расписанию, например в GitHub Actions):
     сначала команды, пришедшие боту с прошлого раза, потом проверка площадок."""
     try:
         if not tg.enabled:
             log.warning("TELEGRAM_TOKEN не задан — проверку пропускаю, чтобы не потерять лоты")
             return
-        await Bot(tg, state, storage, asyncio.Event()).process_pending()
+        if commands:
+            await Bot(tg, state, storage, asyncio.Event()).process_pending()
         if not tg.chat_id:
             log.warning("TELEGRAM_CHAT_ID не задан — напишите боту /start и впишите ответ в секреты")
             return
@@ -165,6 +171,9 @@ def main(argv=None):
     ap.add_argument("--config", help="путь к config.yaml")
     ap.add_argument("--once", action="store_true", help="один проход и выход")
     ap.add_argument("--dry-run", action="store_true", help="только показать найденное (без Telegram и базы)")
+    ap.add_argument("--no-commands", action="store_true",
+                    help="не читать команды бота (их обрабатывает другой исполнитель)")
+    ap.add_argument("--remote-state", help="URL общего state.json: брать оттуда слова, регионы, паузу")
     ap.add_argument("--only", help="опросить только эти площадки, через запятую: eis,torgi,fedresurs,b2b,fabrikant")
     args = ap.parse_args(argv)
 
@@ -178,6 +187,10 @@ def main(argv=None):
         cfg.sources = {cls.name: cls.name in only for cls in ALL}
     state = State(cfg.data_dir / "state.json", cfg.seed)
     storage = Storage(cfg.data_dir / "lots.sqlite")
+    if args.remote_state and state.merge_remote(args.remote_state):
+        storage.forget_unsent()
+        state.data["initialized_sources"] = []
+        state.save()
     tg = Telegram(cfg.telegram_token, cfg.telegram_chat_id)
     if args.dry_run:
         tg.token = ""
@@ -185,7 +198,7 @@ def main(argv=None):
     if args.dry_run:
         asyncio.run(run_cycle(cfg, state, storage, tg, dry_run=True))
     elif args.once:
-        asyncio.run(run_once(cfg, state, storage, tg))
+        asyncio.run(run_once(cfg, state, storage, tg, commands=not args.no_commands))
     else:
         asyncio.run(main_loop(cfg, state, storage, tg))
 
