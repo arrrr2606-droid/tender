@@ -1,6 +1,6 @@
 .venv/
 data/
-certs/
+certs/ru-bundle.pem
 .env
 __pycache__/
 *.pyc

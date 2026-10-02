@@ -100,6 +100,20 @@ async def run_cycle(cfg, state, storage, tg, dry_run=False):
         log.info("%s: в выдаче %d, новых подходящих %d, отправлено %d", src.title, len(lots), matched, sent)
 
 
+async def run_once(cfg, state, storage, tg):
+    """Один проход (для запуска по расписанию, например в GitHub Actions):
+    сначала команды, пришедшие боту с прошлого раза, потом проверка площадок."""
+    try:
+        if tg.enabled:
+            await Bot(tg, state, storage, asyncio.Event()).process_pending()
+        if tg.enabled and not tg.chat_id:
+            log.warning("TELEGRAM_CHAT_ID не задан — напишите боту /start и впишите ответ в секреты")
+            return
+        await run_cycle(cfg, state, storage, tg)
+    finally:
+        await tg.close()
+
+
 async def main_loop(cfg, state, storage, tg):
     check_now = asyncio.Event()
     bot_task = None
@@ -147,8 +161,10 @@ def main(argv=None):
     if args.dry_run:
         tg.token = ""
 
-    if args.once or args.dry_run:
-        asyncio.run(run_cycle(cfg, state, storage, tg, dry_run=args.dry_run))
+    if args.dry_run:
+        asyncio.run(run_cycle(cfg, state, storage, tg, dry_run=True))
+    elif args.once:
+        asyncio.run(run_once(cfg, state, storage, tg))
     else:
         asyncio.run(main_loop(cfg, state, storage, tg))
 

@@ -68,6 +68,23 @@ class Bot:
                 log.exception("Ошибка обработки команд бота")
                 await asyncio.sleep(10)
 
+    async def process_pending(self):
+        """Для режима «один проход» (GitHub Actions): разобрать команды, накопившиеся с прошлого запуска."""
+        offset = int(self.state.data.get("tg_offset", 0))
+        res = await self.tg.call("getUpdates", offset=offset, timeout=0, allowed_updates=["message"])
+        for upd in res.get("result") or []:
+            offset = upd["update_id"] + 1
+            msg = upd.get("message") or {}
+            text = (msg.get("text") or "").strip()
+            if text.startswith("/"):
+                try:
+                    await self.handle(str((msg.get("chat") or {}).get("id", "")), text)
+                except Exception:
+                    log.exception("Ошибка команды %s", text)
+        if offset != self.state.data.get("tg_offset"):
+            self.state.data["tg_offset"] = offset
+            self.state.save()
+
     async def handle(self, chat: str, text: str):
         cmd, _, arg = text.partition(" ")
         cmd = cmd.split("@")[0].lower()

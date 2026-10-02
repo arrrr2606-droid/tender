@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Бандл сертификатов с НУЦ Минцифры — нужен для ЕИС и torgi.gov.ru
 COPY scripts ./scripts
+COPY certs/ru-ca ./certs/ru-ca
 RUN python scripts/make_ca_bundle.py /app/certs/ru-bundle.pem
 
 COPY monitor ./monitor

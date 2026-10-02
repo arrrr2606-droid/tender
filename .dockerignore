@@ -1,6 +1,6 @@
 .venv
 data
-certs
+certs/ru-bundle.pem
 .env
 tests
 __pycache__
