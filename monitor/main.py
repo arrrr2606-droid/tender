@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import re
 import sys
 
 from . import matcher, regions
@@ -20,6 +21,13 @@ from .telegram import Telegram, format_lot
 
 log = logging.getLogger("monitor")
 ALERT_AFTER_FAILS = 3
+FIRST_RUN_MAX = 40      # сколько уже открытых торгов прислать при первом подключении площадки
+
+
+def _date_key(s: str) -> str:
+    """«02.10.2026 15:21» -> «2026-10-02» для сортировки; без даты — в конец."""
+    m = re.search(r"(\d{2})\.(\d{2})\.(\d{4})", s or "")
+    return f"{m.group(3)}-{m.group(2)}-{m.group(1)}" if m else ""
 
 
 async def collect(src, state) -> tuple:
@@ -63,23 +71,37 @@ async def run_cycle(cfg, state, storage, tg, dry_run=False):
             storage.source_ok(src.name, len(lots))
 
         first_run = src.name not in state.data["initialized_sources"]
-        sent = matched = 0
+        fresh = []
         for lot in lots:
             if not dry_run and storage.is_seen(lot):
                 continue
             ok, _why = matcher.check(lot, state, cfg)
-            if dry_run:
-                if ok:
-                    matched += 1
-                    print("\n" + format_lot(lot) + f"\n🔗 {lot.url}")
-                continue
-            if first_run:
+            if ok:
+                fresh.append(lot)
+            elif first_run and not dry_run:
                 storage.mark(lot, notified=False)
-                matched += ok
-                continue
-            if not ok:
-                continue
-            matched += 1
+
+        if dry_run:
+            for lot in fresh:
+                print("\n" + format_lot(lot) + f"\n🔗 {lot.url}")
+            print(f"\n=== {src.title}: в выдаче {len(lots)}, подходит {len(fresh)}"
+                  + (f", ошибка: {error}" if error else ""))
+            continue
+
+        to_send = fresh
+        if first_run:
+            # при первом запуске — только самые свежие, остальные просто запоминаем
+            fresh.sort(key=lambda l: _date_key(l.published), reverse=True)
+            to_send, rest = fresh[:FIRST_RUN_MAX], fresh[FIRST_RUN_MAX:]
+            for lot in rest:
+                storage.mark(lot, notified=False)
+            if tg.enabled:
+                tail = (f" Присылаю {len(to_send)} самых свежих, остальные {len(rest)} отмечены как известные."
+                        if rest else (" Присылаю их." if to_send else ""))
+                await tg.send(f"✅ {src.title}: сейчас {len(fresh)} актуальных подходящих торгов.{tail}")
+
+        sent = 0
+        for lot in to_send:
             if tg.enabled and await tg.send_lot(lot):
                 sent += 1
                 storage.mark(lot, notified=True)
@@ -87,16 +109,10 @@ async def run_cycle(cfg, state, storage, tg, dry_run=False):
                 print(format_lot(lot) + f"\n🔗 {lot.url}\n")
                 storage.mark(lot, notified=True)
 
-        if dry_run:
-            print(f"\n=== {src.title}: в выдаче {len(lots)}, подходит {matched}"
-                  + (f", ошибка: {error}" if error else ""))
-            continue
         if first_run:
             state.data["initialized_sources"].append(src.name)
             state.save()
-            if tg.enabled:
-                await tg.send(f"✅ {src.title} подключена. Сейчас там {matched} актуальных подходящих лотов — "
-                              f"они отмечены как известные. Дальше буду присылать только новые.")
+        matched = len(fresh)
         log.info("%s: в выдаче %d, новых подходящих %d, отправлено %d", src.title, len(lots), matched, sent)
 
 

@@ -33,6 +33,7 @@ HELP = """<b>Мониторинг торгов</b>
 <b>Прочее</b>
 /status — состояние площадок и статистика
 /check — проверить площадки прямо сейчас
+/resend — прислать актуальные торги заново (до 40 самых свежих с каждой площадки; уже присланные не повторяются)
 /pause и /resume — приостановить и возобновить уведомления"""
 
 
@@ -235,6 +236,14 @@ class Bot:
     def cmd_check(self, arg):
         self.check_now.set()
         return "Запускаю проверку площадок…"
+
+    def cmd_resend(self, arg):
+        n = self.storage.forget_unsent()
+        self.state.data["initialized_sources"] = []
+        self.state.save()
+        self.check_now.set()
+        return (f"Хорошо. При следующей проверке пришлю актуальные торги по текущим словам и регионам "
+                f"(до 40 самых свежих с каждой площадки). Забыто непрочитанных: {n}.")
 
     def cmd_pause(self, arg):
         self.state.data["paused"] = True

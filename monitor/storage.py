@@ -53,6 +53,12 @@ class Storage:
         )
         self.db.commit()
 
+    def forget_unsent(self) -> int:
+        """Забыть лоты, которые были только отмечены (не отправлены) — для команды /resend."""
+        n = self.db.execute("DELETE FROM seen WHERE notified=0").rowcount
+        self.db.commit()
+        return n
+
     def source_ok(self, source: str, count: int):
         self.db.execute(
             "INSERT INTO source_health(source, last_ok, fail_streak, last_count) VALUES (?,?,0,?) "
