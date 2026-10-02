@@ -104,9 +104,11 @@ async def run_once(cfg, state, storage, tg):
     """Один проход (для запуска по расписанию, например в GitHub Actions):
     сначала команды, пришедшие боту с прошлого раза, потом проверка площадок."""
     try:
-        if tg.enabled:
-            await Bot(tg, state, storage, asyncio.Event()).process_pending()
-        if tg.enabled and not tg.chat_id:
+        if not tg.enabled:
+            log.warning("TELEGRAM_TOKEN не задан — проверку пропускаю, чтобы не потерять лоты")
+            return
+        await Bot(tg, state, storage, asyncio.Event()).process_pending()
+        if not tg.chat_id:
             log.warning("TELEGRAM_CHAT_ID не задан — напишите боту /start и впишите ответ в секреты")
             return
         await run_cycle(cfg, state, storage, tg)
