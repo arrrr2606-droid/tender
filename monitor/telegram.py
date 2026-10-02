@@ -83,7 +83,8 @@ class Telegram:
             return data
         return {"ok": False}
 
-    async def send(self, text: str, chat_id: Optional[str] = None, url: Optional[str] = None) -> bool:
+    async def send(self, text: str, chat_id: Optional[str] = None, url: Optional[str] = None,
+                   markup: Optional[dict] = None) -> bool:
         payload = {
             "chat_id": chat_id or self.chat_id,
             "text": text,
@@ -92,6 +93,8 @@ class Telegram:
         }
         if url:
             payload["reply_markup"] = {"inline_keyboard": [[{"text": "Открыть на площадке", "url": url}]]}
+        elif markup:
+            payload["reply_markup"] = markup
         async with self._send_lock:
             res = await self.call("sendMessage", **payload)
             await asyncio.sleep(1.1)   # лимит Telegram — ~1 сообщение в секунду в один чат
@@ -101,7 +104,8 @@ class Telegram:
         return await self.send(format_lot(lot), url=lot.url)
 
     async def updates(self, offset: int) -> list:
-        res = await self.call("getUpdates", offset=offset, timeout=50, allowed_updates=["message"])
+        res = await self.call("getUpdates", offset=offset, timeout=50,
+                              allowed_updates=["message", "callback_query"])
         return res.get("result") or []
 
     async def close(self):
