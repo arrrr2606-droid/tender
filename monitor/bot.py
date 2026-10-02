@@ -92,7 +92,8 @@ class Bot:
 
         if not self.tg.chat_id:
             await self.tg.send(
-                f"Ваш chat id: <code>{chat}</code>\nВпишите его в .env как TELEGRAM_CHAT_ID и перезапустите.",
+                f"Ваш chat id: <code>{chat}</code>\nДобавьте его как TELEGRAM_CHAT_ID в секреты репозитория на GitHub "
+                "(Settings → Secrets and variables → Actions) или в файл .env на сервере.",
                 chat_id=chat)
             return
         if chat != self.tg.chat_id:
