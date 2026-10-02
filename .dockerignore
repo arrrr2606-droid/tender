@@ -1,0 +1,6 @@
+.venv
+data
+certs
+.env
+tests
+__pycache__
