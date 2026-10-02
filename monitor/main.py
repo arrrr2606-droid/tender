@@ -153,6 +153,8 @@ def main(argv=None):
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s",
                         stream=sys.stdout)
+    # httpx пишет в лог полный адрес запроса — а в адресе Telegram API есть токен бота
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     cfg = load_config(args.config)
     if args.only:
         only = {s.strip() for s in args.only.split(",")}

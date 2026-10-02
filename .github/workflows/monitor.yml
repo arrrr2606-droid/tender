@@ -53,10 +53,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           [ -f data/state.json ] || { echo "Нечего сохранять"; exit 0; }
-          cd data
-          git init -q -b state
+          D="$RUNNER_TEMP/state"
+          rm -rf "$D" && mkdir -p "$D"
+          cp data/state.json data/lots.sqlite "$D"/
+          cd "$D"
+          git init -b state
           git config user.name "tender-monitor"
           git config user.email "actions@users.noreply.github.com"
           git add -A
-          git commit -q -m "Состояние $(date -u +%Y-%m-%dT%H:%MZ)"
-          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" state
+          git commit -m "Состояние $(date -u +%Y-%m-%dT%H:%MZ)"
+          for i in 1 2 3; do
+            git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" state && exit 0
+            echo "Не удалось сохранить, пробую ещё раз через 10 секунд"; sleep 10
+          done
+          exit 1
