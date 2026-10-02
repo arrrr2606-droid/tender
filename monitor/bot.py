@@ -37,6 +37,19 @@ HELP = """<b>Мониторинг торгов</b>
 /pause и /resume — приостановить и возобновить уведомления"""
 
 
+# команды, которым нужен текст: если его нет — просим прислать следующим сообщением
+ASKS = {
+    "/add": "Какие слова добавить? Напишите следующим сообщением, можно несколько через запятую.",
+    "/remove": "Какое слово убрать? Напишите следующим сообщением.",
+    "/exclude": "Какое минус-слово добавить? Напишите следующим сообщением.",
+    "/include": "Какое минус-слово убрать? Напишите следующим сообщением.",
+    "/addregion": "Какие регионы добавить? Напишите следующим сообщением через запятую, "
+                  "например: Татарстан, Башкортостан, Самарская область",
+    "/removeregion": "Какие регионы убрать? Напишите следующим сообщением.",
+    "/kwregions": "Напишите следующим сообщением: слово: регионы\nНапример: погрузчик: Татарстан, Самарская",
+}
+
+
 def _e(s) -> str:
     return html.escape(str(s or ""), quote=False)
 
@@ -61,7 +74,7 @@ class Bot:
                     msg = upd.get("message") or {}
                     text = (msg.get("text") or "").strip()
                     chat = str((msg.get("chat") or {}).get("id", ""))
-                    if text.startswith("/"):
+                    if text:
                         await self.handle(chat, text)
             except asyncio.CancelledError:
                 raise
@@ -77,7 +90,7 @@ class Bot:
             offset = upd["update_id"] + 1
             msg = upd.get("message") or {}
             text = (msg.get("text") or "").strip()
-            if text.startswith("/"):
+            if text:
                 try:
                     await self.handle(str((msg.get("chat") or {}).get("id", "")), text)
                 except Exception:
@@ -100,6 +113,22 @@ class Bot:
         if chat != self.tg.chat_id:
             log.warning("Команда из чужого чата %s проигнорирована", chat)
             return
+
+        # «/addregion», а регионы — следующим сообщением
+        if not text.startswith("/"):
+            pending = self.state.data.pop("pending_cmd", None)
+            self.state.save()
+            if not pending:
+                await self.tg.send("Я понимаю команды — например <code>/addregion Татарстан</code>. /help — список.")
+                return
+            cmd, arg = pending, text
+        elif not arg and cmd in ASKS:
+            self.state.data["pending_cmd"] = cmd
+            self.state.save()
+            await self.tg.send(ASKS[cmd])
+            return
+        else:
+            self.state.data.pop("pending_cmd", None)
 
         handler = getattr(self, "cmd_" + cmd.lstrip("/"), None)
         reply = handler(arg) if handler else HELP
