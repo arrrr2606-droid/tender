@@ -43,7 +43,7 @@ class Source:
                             self.title, self.cfg.ca_bundle)
         return httpx.AsyncClient(
             headers={"User-Agent": UA, "Accept-Language": "ru-RU,ru;q=0.9"},
-            timeout=httpx.Timeout(40.0, connect=15.0),
+            timeout=httpx.Timeout(30.0, connect=10.0),
             follow_redirects=True,
             verify=verify,
         )
@@ -64,7 +64,7 @@ class Source:
                 if isinstance(e, SourceError) and "отказала" in str(e):
                     break
                 await asyncio.sleep(3 * (attempt + 1))
-        raise SourceError(f"{self.title}: {last}")
+        raise SourceError(f"{self.title}: {type(last).__name__} {last}".strip())
 
     async def search(self, client: httpx.AsyncClient, keyword: str, regions: list) -> list:
         raise NotImplementedError

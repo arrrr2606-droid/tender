@@ -42,7 +42,8 @@ async def collect(src, state) -> tuple:
             except SourceError as e:
                 error = str(e)
                 log.warning("%s / «%s»: %s", src.title, kw["word"], e)
-                if "отказала" in error:
+                # площадка недоступна (блокировка, таймауты) — не мучаем её остальными словами
+                if "отказала" in error or not found:
                     break
             except Exception as e:  # изменилась вёрстка/формат — не роняем остальные площадки
                 error = f"{type(e).__name__}: {e}"
