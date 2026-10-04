@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import sys
+import time
 
 from . import matcher, regions
 from .bot import Bot
@@ -33,11 +34,19 @@ def _date_key(s: str) -> str:
     return f"{m.group(3)}-{m.group(2)}-{m.group(1)}" if m else ""
 
 
+SOURCE_BUDGET = int(os.environ.get("SOURCE_BUDGET", "150"))  # сек на одну площадку
+
+
 async def collect(src, state) -> tuple:
     """Опрашивает площадку по всем ключевым словам. -> (лоты, ошибка или None)"""
     found, error = {}, None
+    started = time.monotonic()
     async with src.client() as client:
         for kw in state.keywords:
+            if time.monotonic() - started > SOURCE_BUDGET:
+                error = error or f"{src.title}: не уложилась в {SOURCE_BUDGET} с — часть слов пропущена"
+                log.warning(error)
+                break
             regs = kw["regions"] if kw.get("regions") is not None else state.regions
             try:
                 for lot in await src.search(client, kw["word"], regs):

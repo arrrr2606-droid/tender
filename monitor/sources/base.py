@@ -63,6 +63,9 @@ class Source:
                 last = e
                 if isinstance(e, SourceError) and "отказала" in str(e):
                     break
+                # не удалось даже подключиться — площадка закрыта для этого сервера, повторы не помогут
+                if isinstance(e, (httpx.ConnectError, httpx.ConnectTimeout)):
+                    break
                 await asyncio.sleep(3 * (attempt + 1))
         raise SourceError(f"{self.title}: {type(last).__name__} {last}".strip())
 
