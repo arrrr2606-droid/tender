@@ -53,7 +53,7 @@ def handler(event, context):
     bucket = os.environ["BUCKET"]
     headers = _headers(context)
     os.environ["MONITOR_DATA"] = str(DATA)
-    os.environ.setdefault("SOURCE_BUDGET", "90")   # 5 площадок × 90 с — укладываемся в таймаут функции
+    os.environ.setdefault("SOURCE_BUDGET", "55")   # 5 площадок × 55 с — укладываемся даже в 5-минутный тест консоли
     _download(bucket, headers)
     from monitor.main import main
     try:
