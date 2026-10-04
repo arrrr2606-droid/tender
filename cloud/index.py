@@ -11,6 +11,8 @@ cloud/relay.py на GitHub. Он же обрабатывает кнопки бо
   outbox/<время>.json    — сообщения для отправки
 
 Переменные окружения: BUCKET; у функции должен быть сервисный аккаунт с ролью storage.editor.
+Необязательно: GH_TOKEN (+ GH_REPO) — после проверки сразу запустить рассылку на GitHub,
+не дожидаясь его расписания.
 Запуск — по таймеру (раз в 3 часа).
 """
 import asyncio
@@ -110,4 +112,23 @@ def handler(event, context):
         asyncio.run(m.run_cycle(cfg, state, storage, outbox))
     finally:
         save()
+        start_relay()
     return {"statusCode": 200, "body": "ok"}
+
+
+def start_relay():
+    """Попросить GitHub сразу разослать найденное (иначе он запустится по своему расписанию)."""
+    token = os.environ.get("GH_TOKEN")
+    if not token:
+        return
+    repo = os.environ.get("GH_REPO", "arrrr2606-droid/tender")
+    try:
+        r = httpx.post(
+            f"https://api.github.com/repos/{repo}/actions/workflows/monitor.yml/dispatches",
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
+            json={"ref": "main"}, timeout=30,
+        )
+        if r.status_code != 204:
+            log.warning("GitHub не запустил рассылку: HTTP %s %s", r.status_code, r.text[:200])
+    except httpx.HTTPError as e:
+        log.warning("GitHub недоступен: %s", e)
