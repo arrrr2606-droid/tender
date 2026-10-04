@@ -1,0 +1,59 @@
+{
+  "keywords": [
+    {
+      "word": "автогрейдер",
+      "regions": null
+    },
+    {
+      "word": "грейдер",
+      "regions": null
+    },
+    {
+      "word": "экскаватор",
+      "regions": null
+    },
+    {
+      "word": "экскаватор-погрузчик",
+      "regions": null
+    },
+    {
+      "word": "погрузчик",
+      "regions": null
+    },
+    {
+      "word": "фронтальный погрузчик",
+      "regions": null
+    },
+    {
+      "word": "спецтехника",
+      "regions": null
+    },
+    {
+      "word": "спецтехника.",
+      "regions": null
+    }
+  ],
+  "minus_words": [
+    "вилочный",
+    "вилочного",
+    "складской",
+    "электропогрузчик",
+    "штабелер",
+    "штабелёр",
+    "ричтрак",
+    "гидравлическая тележка"
+  ],
+  "regions": [
+    "16",
+    "02",
+    "18",
+    "63"
+  ],
+  "paused": false,
+  "initialized_sources": [
+    "b2b"
+  ],
+  "tg_offset": 323792397,
+  "menu_version": 1,
+  "resend_seq": 2
+}
