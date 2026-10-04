@@ -83,7 +83,7 @@ async def run_cycle(cfg, state, storage, tg, dry_run=False):
         return bool(deadline and time.monotonic() > deadline)
 
     for cls in ALL:
-        if not cfg.sources.get(cls.name, True):
+        if not cfg.sources.get(cls.name, True) or cls.name in state.data.get("sources_off", []):
             continue
         if out_of_time():
             log.warning("Время прохода вышло — %s проверю в следующий раз", cls.title)

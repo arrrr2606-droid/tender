@@ -86,7 +86,7 @@ class State:
             }
             self.save()
 
-    SHARED_KEYS = ("keywords", "minus_words", "regions", "paused")
+    SHARED_KEYS = ("keywords", "minus_words", "regions", "paused", "sources_off")
 
     def apply_shared(self, remote: dict) -> bool:
         """Взять слова/регионы/паузу из общих настроек, которые меняет бот.

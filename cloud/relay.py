@@ -27,6 +27,39 @@ from monitor.telegram import Telegram  # noqa: E402
 log = logging.getLogger("relay")
 DATA = Path(os.environ.get("MONITOR_DATA", "data"))
 
+# Разовые изменения общих настроек (применяются к уже сохранённому settings.json)
+SETTINGS_VERSION = 2
+PURCHASE_ONLY_MINUS = ["аренда", "услуги", "предоставление", "ремонт", "обслуживание"]
+SALE_SOURCES = ["torgi", "fedresurs"]          # продажа/аренда имущества, а не закупки
+SALE_MARKERS = ("🏷 torgi.gov.ru", "🏷 Федресурс", "✅ torgi.gov.ru", "✅ Федресурс", "⚠️ torgi.gov.ru", "⚠️ Федресурс")
+
+
+def migrate(state: State) -> bool:
+    d = state.data
+    if d.get("settings_version", 0) >= SETTINGS_VERSION:
+        return False
+    # v2: только закупки (покупка), без продажи/аренды имущества и услуг
+    d["sources_off"] = sorted(set(d.get("sources_off", [])) | set(SALE_SOURCES))
+    for w in PURCHASE_ONLY_MINUS:
+        if w.lower() not in (x.lower() for x in d["minus_words"]):
+            d["minus_words"].append(w)
+    d["settings_version"] = SETTINGS_VERSION
+    state.save()
+    return True
+
+
+def unwanted(item: dict, state: State) -> bool:
+    """Сообщение, которое уже лежит в очереди, но по текущим настройкам не нужно."""
+    from monitor.matcher import has_minus
+
+    text = item.get("text", "")
+    if not item.get("url"):
+        return any(m in text for m in SALE_MARKERS)   # служебные сообщения о площадках
+    if any(m in text for m in SALE_MARKERS):
+        return True
+    title = text.split("\n", 1)[0]
+    return bool(has_minus(title, state.minus_words))
+
 
 class Bucket:
     def __init__(self):
@@ -66,10 +99,10 @@ class Bucket:
             token = res["NextContinuationToken"]
 
 
-async def send_outbox(bucket: Bucket, tg: Telegram) -> int:
+async def send_outbox(bucket: Bucket, tg: Telegram, state: State) -> int:
     sent = 0
     for key in bucket.list("outbox/"):
-        items = json.loads(bucket.get(key) or b"[]")
+        items = [x for x in json.loads(bucket.get(key) or b"[]") if not unwanted(x, state)]
         for i, item in enumerate(items):
             if not await tg.send(item["text"], url=item.get("url")):
                 # Telegram не принял — оставшееся вернём в ящик и попробуем в следующий раз
@@ -99,12 +132,14 @@ async def run():
 
     state = State(DATA / "state.json", cfg.seed)
     storage = Storage(DATA / "lots.sqlite")
+    if migrate(state):
+        log.warning("Настройки обновлены: только закупки, без продажи/аренды имущества и услуг")
     try:
         await Bot(tg, state, storage, asyncio.Event()).process_pending()
         if settings is None or (DATA / "state.json").read_bytes() != settings:
             bucket.put("settings.json", (DATA / "state.json").read_bytes())
         if tg.chat_id:
-            n = await send_outbox(bucket, tg)
+            n = await send_outbox(bucket, tg, state)
             log.warning("Отправлено сообщений: %d", n)
     finally:
         await tg.close()
