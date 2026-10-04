@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+import os
 import time
 
 from . import regions
@@ -388,6 +389,8 @@ class Bot:
         return "\n".join(lines)
 
     def cmd_check(self, arg):
+        if os.environ.get("RELAY_MODE") == "1":
+            return "Площадки проверяются автоматически раз в 3 часа — новые торги придут после ближайшей проверки."
         self.check_now.set()
         return "Запускаю проверку площадок…"
 

@@ -1,63 +1,108 @@
-"""Точка входа для Yandex Cloud Functions.
+"""Сборщик для Yandex Cloud Functions: проверяет площадки и складывает найденное в хранилище.
 
-Запускается по таймеру (раз в 3 часа): забирает базу лотов и настройки из бакета Object Storage,
-обрабатывает накопившиеся команды бота, проверяет все площадки и кладёт базу обратно.
+Из облака в России открываются все площадки, но не открывается Telegram. Поэтому сообщения
+не отправляются отсюда, а кладутся в бакет (папка outbox/), откуда их забирает и отправляет
+cloud/relay.py на GitHub. Он же обрабатывает кнопки бота и пишет настройки в settings.json.
 
-Переменные окружения функции:
-  TELEGRAM_TOKEN, TELEGRAM_CHAT_ID — бот и чат
-  BUCKET — имя бакета Object Storage для базы
-Сервисному аккаунту функции нужна роль storage.editor (доступ к бакету по IAM-токену функции).
+Файлы в бакете:
+  settings.json          — слова, регионы, пауза (пишет только relay, здесь только читаем)
+  collector/state.json   — служебное состояние сборщика
+  collector/lots.sqlite  — какие лоты уже видели
+  outbox/<время>.json    — сообщения для отправки
+
+Переменные окружения: BUCKET; у функции должен быть сервисный аккаунт с ролью storage.editor.
+Запуск — по таймеру (раз в 3 часа).
 """
+import asyncio
+import json
 import logging
 import os
+import time
 from pathlib import Path
 
 import httpx
 
 DATA = Path("/tmp/data")
-FILES = ["state.json", "lots.sqlite"]
 S3 = "https://storage.yandexcloud.net"
 SEED = Path(__file__).parent / "cloud" / "seed_state.json"
+FILES = {"state.json": "collector/state.json", "lots.sqlite": "collector/lots.sqlite"}
 
-log = logging.getLogger("cloud")
-
-
-def _headers(context) -> dict:
-    token = (getattr(context, "token", None) or {}).get("access_token")
-    if not token:
-        raise RuntimeError("У функции нет сервисного аккаунта — назначьте его в настройках функции")
-    return {"X-YaCloud-SubjectToken": token}
+log = logging.getLogger("collector")
 
 
-def _download(bucket: str, headers: dict):
-    DATA.mkdir(parents=True, exist_ok=True)
-    for name in FILES:
-        r = httpx.get(f"{S3}/{bucket}/{name}", headers=headers, timeout=60)
+class Bucket:
+    def __init__(self, name: str, token: str):
+        self.base = f"{S3}/{name}"
+        self.headers = {"X-YaCloud-SubjectToken": token}
+
+    def get(self, key: str):
+        r = httpx.get(f"{self.base}/{key}", headers=self.headers, timeout=60)
         if r.status_code == 404:
-            continue
+            return None
         r.raise_for_status()
-        (DATA / name).write_bytes(r.content)
-    if not (DATA / "state.json").exists() and SEED.exists():
-        (DATA / "state.json").write_bytes(SEED.read_bytes())
+        return r.content
 
-
-def _upload(bucket: str, headers: dict):
-    for name in FILES:
-        path = DATA / name
-        if path.exists():
-            r = httpx.put(f"{S3}/{bucket}/{name}", content=path.read_bytes(), headers=headers, timeout=60)
-            r.raise_for_status()
+    def put(self, key: str, data: bytes):
+        httpx.put(f"{self.base}/{key}", content=data, headers=self.headers, timeout=60).raise_for_status()
 
 
 def handler(event, context):
-    bucket = os.environ["BUCKET"]
-    headers = _headers(context)
+    token = (getattr(context, "token", None) or {}).get("access_token")
+    if not token:
+        raise RuntimeError("У функции нет сервисного аккаунта — назначьте его в настройках функции")
+    bucket = Bucket(os.environ["BUCKET"], token)
+
     os.environ["MONITOR_DATA"] = str(DATA)
-    os.environ.setdefault("SOURCE_BUDGET", "55")   # 5 площадок × 55 с — укладываемся даже в 5-минутный тест консоли
-    _download(bucket, headers)
-    from monitor.main import main
+    os.environ.setdefault("SOURCE_BUDGET", "55")   # сбор с одной площадки — не дольше 55 с
+    os.environ.setdefault("RUN_BUDGET", "240")     # весь проход — 4 мин (тест в консоли обрывает на 5-й)
+
+    DATA.mkdir(parents=True, exist_ok=True)
+    for local, key in FILES.items():
+        data = bucket.get(key)
+        if data is not None:
+            (DATA / local).write_bytes(data)
+    if not (DATA / "state.json").exists() and SEED.exists():
+        (DATA / "state.json").write_bytes(SEED.read_bytes())
+
+    import monitor.main as m
+    from monitor import config as mconfig
+    from monitor.outbox import Outbox
+    from monitor.storage import Storage
+
+    logging.basicConfig(level=logging.INFO)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    cfg = mconfig.load_config()
+    state = mconfig.State(DATA / "state.json", cfg.seed)
+    storage = Storage(DATA / "lots.sqlite")
+
+    settings = bucket.get("settings.json")
+    if settings is None:
+        # первый запуск: публикуем настройки, дальше их меняет бот через relay
+        bucket.put("settings.json", json.dumps(state.data, ensure_ascii=False, indent=2).encode())
+    elif state.apply_shared(json.loads(settings)):
+        storage.forget_unsent()
+        state.data["initialized_sources"] = []
+        state.save()
+
+    counter = {"n": 0}
+
+    def write_outbox(items):
+        counter["n"] += 1
+        key = f"outbox/{time.strftime('%Y%m%d-%H%M%S')}-{counter['n']:02d}.json"
+        bucket.put(key, json.dumps(items, ensure_ascii=False).encode())
+
+    outbox = Outbox(cfg.telegram_chat_id, write_outbox)
+
+    def save():
+        outbox.flush()   # сначала сообщения, потом отметка «отправлено» — чтобы ничего не потерять
+        for local, key in FILES.items():
+            path = DATA / local
+            if path.exists():
+                bucket.put(key, path.read_bytes())
+
+    m.AFTER_SOURCE = save
     try:
-        main(["--once"])
+        asyncio.run(m.run_cycle(cfg, state, storage, outbox))
     finally:
-        _upload(bucket, headers)
+        save()
     return {"statusCode": 200, "body": "ok"}

@@ -88,19 +88,12 @@ class State:
 
     SHARED_KEYS = ("keywords", "minus_words", "regions", "paused")
 
-    def merge_remote(self, url: str) -> Optional[bool]:
-        """Подтянуть слова/регионы/паузу из общего состояния (ветка state на GitHub).
+    def apply_shared(self, remote: dict) -> bool:
+        """Взять слова/регионы/паузу из общих настроек, которые меняет бот.
 
-        Нужно второму исполнителю (Mac), который проверяет часть площадок: команды бота
-        обрабатывает GitHub, а Mac только читает результат. -> True, если запрошен /resend.
+        Нужно сборщику, который проверяет площадки, когда команды бота обрабатывает другой
+        исполнитель. -> True, если с прошлого раза запрошен /resend.
         """
-        import httpx
-
-        try:
-            remote = httpx.get(url, timeout=20, follow_redirects=True).json()
-        except Exception as e:
-            log.warning("Не удалось загрузить общие настройки (%s) — работаю с локальными", e)
-            return None
         for key in self.SHARED_KEYS:
             if key in remote:
                 self.data[key] = remote[key]
@@ -108,6 +101,17 @@ class State:
         self.data["resend_seq"] = remote.get("resend_seq", 0)
         self.save()
         return resend
+
+    def merge_remote(self, url: str) -> Optional[bool]:
+        """apply_shared() для настроек, лежащих по публичному URL."""
+        import httpx
+
+        try:
+            remote = httpx.get(url, timeout=20, follow_redirects=True).json()
+        except Exception as e:
+            log.warning("Не удалось загрузить общие настройки (%s) — работаю с локальными", e)
+            return None
+        return self.apply_shared(remote)
 
     def save(self):
         with self._lock:

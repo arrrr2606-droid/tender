@@ -35,6 +35,10 @@ def _date_key(s: str) -> str:
 
 
 SOURCE_BUDGET = int(os.environ.get("SOURCE_BUDGET", "150"))  # сек на одну площадку
+# Общий лимит на проход (сек, 0 — без лимита). Когда время выходит, оставшиеся лоты не отправляются
+# и не отмечаются — их пришлёт следующий проход. Нужен для облачных функций с таймаутом.
+RUN_BUDGET = int(os.environ.get("RUN_BUDGET", "0"))
+AFTER_SOURCE = None   # колбэк после каждой площадки (облачная функция сохраняет базу)
 
 
 async def collect(src, state) -> tuple:
@@ -67,8 +71,16 @@ async def run_cycle(cfg, state, storage, tg, dry_run=False):
     if state.paused:
         log.info("На паузе — пропускаю проход")
         return
+    deadline = time.monotonic() + RUN_BUDGET if RUN_BUDGET else None
+
+    def out_of_time() -> bool:
+        return bool(deadline and time.monotonic() > deadline)
+
     for cls in ALL:
         if not cfg.sources.get(cls.name, True):
+            continue
+        if out_of_time():
+            log.warning("Время прохода вышло — %s проверю в следующий раз", cls.title)
             continue
         src = cls(cfg)
         lots, error = await collect(src, state)
@@ -117,6 +129,9 @@ async def run_cycle(cfg, state, storage, tg, dry_run=False):
 
         sent = 0
         for lot in to_send:
+            if out_of_time():
+                log.warning("%s: время вышло, %d лотов пришлю в следующий раз", src.title, len(to_send) - sent)
+                break
             if tg.enabled and await tg.send_lot(lot):
                 sent += 1
                 storage.mark(lot, notified=True)
@@ -128,7 +143,9 @@ async def run_cycle(cfg, state, storage, tg, dry_run=False):
             state.data["initialized_sources"].append(src.name)
             state.save()
         matched = len(fresh)
-        log.info("%s: в выдаче %d, новых подходящих %d, отправлено %d", src.title, len(lots), matched, sent)
+        log.warning("%s: в выдаче %d, новых подходящих %d, отправлено %d", src.title, len(lots), matched, sent)
+        if AFTER_SOURCE:
+            AFTER_SOURCE()
 
 
 async def run_once(cfg, state, storage, tg, commands=True):

@@ -1,25 +1,21 @@
-# Проверка площадок по расписанию на серверах GitHub.
-# База уже отправленных лотов и настройки из бота хранятся в ветке `state`.
+# Пересылка в Telegram. Торги ищет функция в Yandex Cloud (cloud/index.py) и кладёт их
+# в хранилище Яндекса; отсюда (из Telegram недоступен в РФ-облаке) они отправляются в Telegram,
+# здесь же обрабатываются кнопки бота. На бесплатном тарифе GitHub запускает это раз в 1–4 часа.
 name: Мониторинг торгов
 
-# На бесплатном тарифе GitHub фактически запускает проверку раз в 3–4 часа. ЕИС, torgi.gov.ru,
-# Федресурс и Фабрикант не открываются с его зарубежных серверов, поэтому здесь — только B2B-Center.
-# Все площадки: свой сервер в России (Docker) или Mac (scripts/install_mac.sh).
-# Расписание отключено: мониторинг работает в Yandex Cloud Functions (cloud/index.py).
 on:
+  schedule:
+    - cron: "*/30 * * * *"
   workflow_dispatch:            # кнопка «Run workflow» для ручного запуска
 
-permissions:
-  contents: write               # чтобы сохранять ветку state
-
 concurrency:
-  group: monitor
+  group: relay
   cancel-in-progress: false
 
 jobs:
-  check:
+  relay:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -29,44 +25,14 @@ jobs:
           cache: pip
 
       - name: Установка
-        run: |
-          pip install -r requirements.txt
-          python scripts/make_ca_bundle.py
+        run: pip install -r requirements.txt boto3
 
-      - name: Загрузить базу лотов
-        run: |
-          mkdir -p data
-          if git fetch --depth=1 origin state; then
-            git archive FETCH_HEAD | tar -x -C data
-            echo "База загружена"
-          else
-            echo "Ветки state ещё нет — первый запуск"
-          fi
-
-      - name: Проверить площадки
+      - name: Кнопки бота и отправка найденных торгов
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          EIS_ELSEWHERE: "1"
-        run: python -m monitor.main --once --only b2b
-
-      - name: Сохранить базу лотов
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          [ -f data/state.json ] || { echo "Нечего сохранять"; exit 0; }
-          D="$RUNNER_TEMP/state"
-          rm -rf "$D" && mkdir -p "$D"
-          cp data/state.json data/lots.sqlite "$D"/
-          cd "$D"
-          git init -b state
-          git config user.name "tender-monitor"
-          git config user.email "actions@users.noreply.github.com"
-          git add -A
-          git commit -m "Состояние $(date -u +%Y-%m-%dT%H:%MZ)"
-          for i in 1 2 3; do
-            git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" state && exit 0
-            echo "Не удалось сохранить, пробую ещё раз через 10 секунд"; sleep 10
-          done
-          exit 1
+          YC_BUCKET: ${{ secrets.YC_BUCKET }}
+          YC_KEY_ID: ${{ secrets.YC_KEY_ID }}
+          YC_SECRET: ${{ secrets.YC_SECRET }}
+          RELAY_MODE: "1"
+        run: python cloud/relay.py
