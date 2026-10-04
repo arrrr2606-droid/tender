@@ -2,10 +2,12 @@
 # База уже отправленных лотов и настройки из бота хранятся в ветке `state`.
 name: Мониторинг торгов
 
-# Расписание отключено: на бесплатном тарифе GitHub запускал проверку раз в 3–4 часа, а ЕИС,
-# torgi.gov.ru, Федресурс и Фабрикант не открываются с его зарубежных серверов. Мониторинг
-# работает на Mac (scripts/install_mac.sh) или на своём сервере (Docker). Запуск вручную оставлен.
+# На бесплатном тарифе GitHub фактически запускает проверку раз в 3–4 часа. ЕИС, torgi.gov.ru,
+# Федресурс и Фабрикант не открываются с его зарубежных серверов, поэтому здесь — только B2B-Center.
+# Все площадки: свой сервер в России (Docker) или Mac (scripts/install_mac.sh).
 on:
+  schedule:
+    - cron: "*/30 * * * *"
   workflow_dispatch:            # кнопка «Run workflow» для ручного запуска
 
 permissions:
@@ -47,9 +49,7 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           EIS_ELSEWHERE: "1"
-        # ЕИС и torgi.gov.ru не открываются с зарубежных серверов GitHub — их проверяет Mac
-        # (scripts/install_mac.sh). Здесь — остальные площадки и команды бота.
-        run: python -m monitor.main --once --only b2b,fabrikant,fedresurs
+        run: python -m monitor.main --once --only b2b
 
       - name: Сохранить базу лотов
         if: always()
