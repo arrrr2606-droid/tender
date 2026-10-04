@@ -1,10 +1,9 @@
 #!/bin/zsh
-# Одна проверка ЕИС и torgi.gov.ru с этого Mac. Запускается launchd каждые 30 минут.
-# Слова, регионы и пауза берутся из общего состояния на GitHub (ветка state),
-# команды бота обрабатывает GitHub — здесь они не читаются.
+# Мониторинг на этом Mac: все площадки + мгновенные ответы бота.
+# Запускается launchd при входе в систему и перезапускается, если процесс завершится.
 APP="$HOME/Library/Application Support/tender-monitor"
 cd "$APP/app" || exit 1
-echo "=== $(date '+%d.%m.%Y %H:%M') ==="
+echo "=== запуск $(date '+%d.%m.%Y %H:%M') ==="
 
 # свежий код с GitHub (если интернет есть)
 OLD_REQ=$(md5 -q requirements.txt)
@@ -14,6 +13,4 @@ git pull -q --ff-only || echo "git pull не удался — работаю н�
 
 set -a; source "$APP/.env"; set +a
 export MONITOR_DATA="$APP/data"
-REPO=$(git remote get-url origin | sed -E 's#https://github.com/##; s#\.git$##')
-exec .venv/bin/python -m monitor.main --once --only eis,torgi --no-commands \
-    --remote-state "https://raw.githubusercontent.com/$REPO/state/state.json"
+exec .venv/bin/python -m monitor.main

@@ -1,5 +1,6 @@
 #!/bin/zsh
-# Установка проверки ЕИС и torgi.gov.ru на этот Mac (фоновая задача launchd, каждые 30 минут).
+# Установка мониторинга на этот Mac (фоновая служба launchd: стартует при входе в систему,
+# перезапускается при сбое; площадки проверяются каждые interval_minutes из config.yaml).
 # Запуск: zsh scripts/install_mac.sh        Удаление: zsh scripts/install_mac.sh --remove
 set -e
 APP="$HOME/Library/Application Support/tender-monitor"
@@ -37,8 +38,9 @@ cat > "$PLIST" <<PL
   <key>Label</key><string>ru.tender-monitor</string>
   <key>ProgramArguments</key>
   <array><string>/bin/zsh</string><string>$APP/app/scripts/mac_run.sh</string></array>
-  <key>StartInterval</key><integer>1800</integer>
   <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>60</integer>
   <key>StandardOutPath</key><string>$APP/log.txt</string>
   <key>StandardErrorPath</key><string>$APP/log.txt</string>
 </dict>
@@ -46,5 +48,5 @@ cat > "$PLIST" <<PL
 PL
 launchctl unload "$PLIST" 2>/dev/null || true
 launchctl load "$PLIST"
-echo "Готово. Mac проверяет ЕИС и torgi.gov.ru каждые 30 минут (пока включён)."
+echo "Готово. Мониторинг работает на этом Mac (пока он включён): все площадки, бот отвечает сразу."
 echo "Журнал: $APP/log.txt"

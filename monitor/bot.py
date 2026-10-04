@@ -112,12 +112,14 @@ class Bot:
         self.check_now = check_now
 
     async def run(self):
-        offset = 0
+        offset = int(self.state.data.get("tg_offset", 0))
         await self.setup_menu()
         while True:
             try:
                 for upd in await self.tg.updates(offset):
                     offset = upd["update_id"] + 1
+                    self.state.data["tg_offset"] = offset
+                    self.state.save()
                     await self.dispatch(upd)
             except asyncio.CancelledError:
                 raise
