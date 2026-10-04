@@ -103,6 +103,9 @@ def handler(event, context):
                 bucket.put(key, path.read_bytes())
 
     m.AFTER_SOURCE = save
+    # модуль мог остаться в памяти с прошлого вызова — лимиты выставляем явно
+    m.SOURCE_BUDGET = int(os.environ["SOURCE_BUDGET"])
+    m.RUN_BUDGET = int(os.environ["RUN_BUDGET"])
     try:
         asyncio.run(m.run_cycle(cfg, state, storage, outbox))
     finally:
