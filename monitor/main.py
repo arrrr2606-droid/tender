@@ -42,29 +42,35 @@ AFTER_SOURCE = None   # колбэк после каждой площадки (�
 
 
 async def collect(src, state) -> tuple:
-    """Опрашивает площадку по всем ключевым словам. -> (лоты, ошибка или None)"""
-    found, error = {}, None
-    started = time.monotonic()
+    """Опрашивает площадку по всем ключевым словам. -> (лоты, ошибка или None)
+
+    Жёсткий лимит SOURCE_BUDGET: зависшую площадку обрываем на ходу, собранное сохраняем.
+    """
+    found, errors = {}, []
+    try:
+        await asyncio.wait_for(_collect(src, state, found, errors), timeout=SOURCE_BUDGET)
+    except asyncio.TimeoutError:
+        errors.append(f"{src.title}: не уложилась в {SOURCE_BUDGET} с — взято то, что успели собрать")
+        log.warning(errors[-1])
+    return list(found.values()), (errors[-1] if errors else None)
+
+
+async def _collect(src, state, found: dict, errors: list):
     async with src.client() as client:
         for kw in state.keywords:
-            if time.monotonic() - started > SOURCE_BUDGET:
-                error = error or f"{src.title}: не уложилась в {SOURCE_BUDGET} с — часть слов пропущена"
-                log.warning(error)
-                break
             regs = kw["regions"] if kw.get("regions") is not None else state.regions
             try:
                 for lot in await src.search(client, kw["word"], regs):
                     found.setdefault(lot.key, lot)
             except SourceError as e:
-                error = str(e)
+                errors.append(str(e))
                 log.warning("%s / «%s»: %s", src.title, kw["word"], e)
                 # площадка недоступна (блокировка, таймауты) — не мучаем её остальными словами
-                if "отказала" in error or not found:
+                if "отказала" in str(e) or not found:
                     break
             except Exception as e:  # изменилась вёрстка/формат — не роняем остальные площадки
-                error = f"{type(e).__name__}: {e}"
+                errors.append(f"{type(e).__name__}: {e}")
                 log.exception("%s / «%s»", src.title, kw["word"])
-    return list(found.values()), error
 
 
 async def run_cycle(cfg, state, storage, tg, dry_run=False):

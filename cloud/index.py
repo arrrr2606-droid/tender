@@ -53,8 +53,10 @@ def handler(event, context):
     bucket = Bucket(os.environ["BUCKET"], token)
 
     os.environ["MONITOR_DATA"] = str(DATA)
-    os.environ.setdefault("SOURCE_BUDGET", "55")   # сбор с одной площадки — не дольше 55 с
-    os.environ.setdefault("RUN_BUDGET", "240")     # весь проход — 4 мин (тест в консоли обрывает на 5-й)
+    # По таймеру функция может работать до 10 минут; тест в консоли обрывается на 5-й минуте.
+    by_timer = isinstance(event, dict) and "messages" in event
+    os.environ["SOURCE_BUDGET"] = "100" if by_timer else "45"   # сек на одну площадку
+    os.environ["RUN_BUDGET"] = "480" if by_timer else "220"     # сек на весь проход
 
     DATA.mkdir(parents=True, exist_ok=True)
     for local, key in FILES.items():
