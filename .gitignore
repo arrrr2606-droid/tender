@@ -5,3 +5,5 @@ certs/ru-bundle.pem
 __pycache__/
 *.pyc
 .pytest_cache/
+dist/
+cloud/seed_state.json

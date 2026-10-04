@@ -95,7 +95,8 @@ def _e(s) -> str:
 
 
 def _split(arg: str) -> list:
-    return [p.strip() for p in arg.replace(";", ",").split(",") if p.strip()]
+    parts = (p.strip().strip(".!?\"«»'") .strip() for p in arg.replace(";", ",").replace("\n", ",").split(","))
+    return [p for p in parts if p]
 
 
 def _inline(buttons: list, per_row: int = 2) -> dict:

@@ -5,9 +5,8 @@ name: Мониторинг торгов
 # На бесплатном тарифе GitHub фактически запускает проверку раз в 3–4 часа. ЕИС, torgi.gov.ru,
 # Федресурс и Фабрикант не открываются с его зарубежных серверов, поэтому здесь — только B2B-Center.
 # Все площадки: свой сервер в России (Docker) или Mac (scripts/install_mac.sh).
+# Расписание отключено: мониторинг работает в Yandex Cloud Functions (cloud/index.py).
 on:
-  schedule:
-    - cron: "*/30 * * * *"
   workflow_dispatch:            # кнопка «Run workflow» для ручного запуска
 
 permissions:
