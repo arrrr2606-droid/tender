@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 SOURCE_TITLES = {
     "eis": "ЕИС", "torgi": "torgi.gov.ru", "fedresurs": "Федресурс",
-    "b2b": "B2B-Center", "fabrikant": "Фабрикант",
+    "b2b": "B2B-Center", "fabrikant": "Фабрикант", "etpgpb": "ЭТП ГПБ", "tektorg": "ТЭК-Торг",
 }
 
 

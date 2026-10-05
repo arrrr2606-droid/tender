@@ -51,3 +51,17 @@ def test_fabrikant():
     assert l.eis_number == "0194200000526005085"
     assert l.price == 13327333.0
     assert l.deadline.startswith("05.10.2026")
+
+
+def test_etpgpb():
+    from monitor.sources import etpgpb
+    lots = etpgpb.parse_page(json.loads((FX / "etpgpb.json").read_text(encoding="utf-8")))
+    assert lots and all(l.url.startswith("https://etpgpb.ru/") for l in lots)
+    assert all("Публичное предложение" not in l.kind for l in lots)
+
+
+def test_tektorg():
+    from monitor.sources import tektorg
+    lots = tektorg.parse_html((FX / "tektorg.html").read_text(encoding="utf-8"))
+    assert all(l.status == "Приём заявок" for l in lots)
+    assert all(l.url.startswith("http") for l in lots)
