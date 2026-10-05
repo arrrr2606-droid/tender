@@ -13,7 +13,8 @@ cloud/relay.py на GitHub. Он же обрабатывает кнопки бо
 Переменные окружения: BUCKET; у функции должен быть сервисный аккаунт с ролью storage.editor.
 Необязательно: GH_TOKEN (+ GH_REPO) — после проверки сразу запустить рассылку на GitHub,
 не дожидаясь его расписания.
-Запуск — по таймеру (раз в 3 часа).
+Запуск — по таймеру (раз в 3 часа). Второй таймер с данными «relay» (каждые 10 минут) только
+будит GitHub, чтобы бот быстрее отвечал на кнопки.
 """
 import asyncio
 import json
@@ -49,6 +50,12 @@ class Bucket:
 
 
 def handler(event, context):
+    # Второй таймер (каждые 10 мин, данные «relay»): только разбудить GitHub, чтобы бот ответил
+    # на кнопки. Площадки при этом не проверяются.
+    if '"relay"' in json.dumps(event, ensure_ascii=False):
+        start_relay()
+        return {"statusCode": 200, "body": "relay"}
+
     token = (getattr(context, "token", None) or {}).get("access_token")
     if not token:
         raise RuntimeError("У функции нет сервисного аккаунта — назначьте его в настройках функции")
