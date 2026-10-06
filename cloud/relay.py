@@ -104,12 +104,20 @@ async def send_outbox(bucket: Bucket, tg: Telegram, state: State) -> int:
     for key in bucket.list("outbox/"):
         items = [x for x in json.loads(bucket.get(key) or b"[]") if not unwanted(x, state)]
         for i, item in enumerate(items):
-            if not await tg.send(item["text"], url=item.get("url")):
-                # Telegram не принял — оставшееся вернём в ящик и попробуем в следующий раз
-                bucket.put(key, json.dumps(items[i:], ensure_ascii=False).encode())
-                log.warning("Telegram не принял сообщение, остаток %d оставлен в %s", len(items) - i, key)
-                return sent
-            sent += 1
+            ok = await tg.send(item["text"], url=item.get("url"))
+            if not ok and item.get("url"):
+                ok = await tg.send(item["text"])   # может, Telegram не понравилась кнопка-ссылка
+            if ok:
+                sent += 1
+                continue
+            # Сетевые сбои и лимиты Telegram.call() уже переждал; раз всё равно отказ — проверим,
+            # жив ли Telegram вообще. Если жив — сообщение «битое», пропускаем его, а не всю очередь.
+            if (await tg.call("getMe")).get("ok"):
+                log.warning("Telegram отклонил сообщение, пропускаю его: %s", item["text"][:120])
+                continue
+            bucket.put(key, json.dumps(items[i:], ensure_ascii=False).encode())
+            log.warning("Telegram недоступен, остаток %d оставлен в %s", len(items) - i, key)
+            return sent
         bucket.delete(key)
     return sent
 

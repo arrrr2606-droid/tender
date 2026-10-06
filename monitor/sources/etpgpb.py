@@ -33,7 +33,8 @@ def parse_page(data: dict) -> list:
             source="etpgpb",
             id=str(x.get("id")),
             title=clean(a.get("title")),
-            url=SITE + path if path.startswith("/") else (a.get("platform_url") or SITE),
+            url=SITE + path if path.startswith("/") else (
+                a.get("platform_url") if str(a.get("platform_url") or "").startswith("http") else SITE),
             kind=" · ".join(p for p in (a.get("section_category_name"), a.get("procedure_type_name")) if p),
             customer=clean(a.get("company_name")),
             price=parse_price(a.get("amount")),

@@ -91,6 +91,8 @@ class Telegram:
             "parse_mode": "HTML",
             "disable_web_page_preview": True,
         }
+        if url and not str(url).startswith(("http://", "https://")):
+            url = None   # Telegram не принимает кнопку с неполной ссылкой
         if url:
             payload["reply_markup"] = {"inline_keyboard": [[{"text": "Открыть на площадке", "url": url}]]}
         elif markup:

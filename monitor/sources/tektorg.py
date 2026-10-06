@@ -43,11 +43,15 @@ def parse_html(html: str) -> list:
             continue
         reg = str(x.get("registryNumber") or "")
         dates = x.get("dates") or {}
+        link = x.get("etpLink") or ""
+        if not link.startswith(("http://", "https://")):
+            # у части разделов ссылка относительная и без домена — даём поиск по номеру процедуры
+            link = f"https://www.tektorg.ru/procedures?name={reg}" if reg else "https://www.tektorg.ru/procedures"
         lots.append(Lot(
             source="tektorg",
             id=str(x.get("id")),
             title=clean(x.get("title")),
-            url=x.get("etpLink") or f"https://www.tektorg.ru/procedures?name={reg}",
+            url=link,
             kind=" · ".join(p for p in (SECTION_NAMES.get(x.get("sectionAlias"), x.get("sectionAlias")),
                                         x.get("typeName")) if p),
             customer=clean(x.get("organizerName")),
