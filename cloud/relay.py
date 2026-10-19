@@ -123,34 +123,71 @@ async def send_outbox(bucket: Bucket, tg: Telegram, state: State) -> int:
 
 
 async def run():
+    """DATA/state.json — настройки бота (копия settings.json), DATA/fallback.sqlite — база запасного
+    сбора. Обе сохраняются workflow в ветку state, поэтому переживают недоступность Яндекса."""
     cfg = load_config()
-    bucket = Bucket()
     tg = Telegram(cfg.telegram_token, cfg.telegram_chat_id)
     if not tg.enabled:
         log.warning("TELEGRAM_TOKEN не задан — пропускаю")
         return
     DATA.mkdir(parents=True, exist_ok=True)
 
-    settings = bucket.get("settings.json")
-    if settings is not None:
-        (DATA / "state.json").write_bytes(settings)
-    lots = bucket.get("collector/lots.sqlite")   # только для /status — состояние площадок
-    if lots is not None:
-        (DATA / "lots.sqlite").write_bytes(lots)
+    bucket, settings = None, None
+    try:
+        bucket = Bucket()
+        settings = bucket.get("settings.json")
+        if settings is not None:
+            (DATA / "state.json").write_bytes(settings)
+        lots = bucket.get("collector/lots.sqlite")   # только для /status — состояние площадок
+        if lots is not None:
+            (DATA / "collector.sqlite").write_bytes(lots)
+    except Exception as e:
+        bucket = None
+        log.warning("Хранилище Яндекса недоступно (%s) — работаю с копией настроек из ветки state",
+                    type(e).__name__)
 
     state = State(DATA / "state.json", cfg.seed)
-    storage = Storage(DATA / "lots.sqlite")
+    storage = Storage(DATA / "collector.sqlite")
     if migrate(state):
         log.warning("Настройки обновлены: только закупки, без продажи/аренды имущества и услуг")
     try:
         await Bot(tg, state, storage, asyncio.Event()).process_pending()
-        if settings is None or (DATA / "state.json").read_bytes() != settings:
-            bucket.put("settings.json", (DATA / "state.json").read_bytes())
-        if tg.chat_id:
-            n = await send_outbox(bucket, tg, state)
-            log.warning("Отправлено сообщений: %d", n)
+        if bucket and (settings is None or (DATA / "state.json").read_bytes() != settings):
+            try:
+                bucket.put("settings.json", (DATA / "state.json").read_bytes())
+            except Exception as e:
+                log.warning("Не удалось сохранить настройки в Яндекс (%s)", type(e).__name__)
+        if not tg.chat_id:
+            return
+        if bucket:
+            try:
+                n = await send_outbox(bucket, tg, state)
+                log.warning("Отправлено сообщений: %d", n)
+            except Exception as e:
+                log.warning("Очередь из Яндекса недоступна (%s)", type(e).__name__)
+        await fallback(cfg, state, tg)
     finally:
         await tg.close()
+
+
+async def fallback(cfg, state: State, tg: Telegram):
+    """Запасной сбор прямо здесь — для площадок, которые открываются с серверов GitHub
+    (FALLBACK_SOURCES, например «b2b»). Нужен, пока сборщик в Яндексе не работает."""
+    names = [x.strip() for x in os.environ.get("FALLBACK_SOURCES", "").split(",") if x.strip()]
+    if not names:
+        return
+    from monitor import main as m
+
+    cfg.sources = {cls.name: cls.name in names for cls in m.ALL}
+    # отдельный учёт «первого запуска» для запасного сбора
+    real_init = state.data.get("initialized_sources", [])
+    state.data["initialized_sources"] = state.data.get("fallback_initialized", [])
+    try:
+        await m.run_cycle(cfg, state, Storage(DATA / "fallback.sqlite"), tg)
+    finally:
+        state.data["fallback_initialized"] = state.data["initialized_sources"]
+        state.data["initialized_sources"] = real_init
+        state.save()
 
 
 if __name__ == "__main__":

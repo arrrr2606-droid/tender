@@ -1,12 +1,16 @@
-# Пересылка в Telegram. Торги ищет функция в Yandex Cloud (cloud/index.py) и кладёт их
-# в хранилище Яндекса; отсюда (из Telegram недоступен в РФ-облаке) они отправляются в Telegram,
-# здесь же обрабатываются кнопки бота. На бесплатном тарифе GitHub запускает это раз в 1–4 часа.
+# Пересылка в Telegram и кнопки бота. Торги ищет функция в Yandex Cloud (cloud/index.py) и кладёт
+# их в хранилище Яндекса; отсюда они отправляются в Telegram (из РФ-облака Telegram недоступен).
+# FALLBACK_SOURCES — площадки, которые проверяются прямо здесь, пока Яндекс не работает
+# (с серверов GitHub открывается только B2B-Center).
 name: Мониторинг торгов
 
 on:
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch:            # кнопка «Run workflow» для ручного запуска
+
+permissions:
+  contents: write               # чтобы сохранять ветку state
 
 concurrency:
   group: relay
@@ -27,6 +31,14 @@ jobs:
       - name: Установка
         run: pip install -r requirements.txt boto3
 
+      - name: Загрузить настройки и базу
+        run: |
+          mkdir -p data
+          if git fetch --depth=1 origin state; then
+            git archive FETCH_HEAD | tar -x -C data
+            rm -f data/lots.sqlite
+          fi
+
       - name: Кнопки бота и отправка найденных торгов
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
@@ -35,4 +47,23 @@ jobs:
           YC_KEY_ID: ${{ secrets.YC_KEY_ID }}
           YC_SECRET: ${{ secrets.YC_SECRET }}
           RELAY_MODE: "1"
+          FALLBACK_SOURCES: "b2b"
+          SOURCE_BUDGET: "90"
         run: python cloud/relay.py
+
+      - name: Сохранить настройки и базу
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          [ -f data/state.json ] || { echo "Нечего сохранять"; exit 0; }
+          D="$RUNNER_TEMP/state"; rm -rf "$D"; mkdir -p "$D"
+          cp data/state.json "$D"/
+          [ -f data/fallback.sqlite ] && cp data/fallback.sqlite "$D"/
+          cd "$D"
+          git init -q -b state
+          git config user.name "tender-monitor"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Состояние $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" state
