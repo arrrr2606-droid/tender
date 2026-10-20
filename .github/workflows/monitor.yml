@@ -47,7 +47,7 @@ jobs:
           YC_KEY_ID: ${{ secrets.YC_KEY_ID }}
           YC_SECRET: ${{ secrets.YC_SECRET }}
           RELAY_MODE: "1"
-          FALLBACK_SOURCES: "b2b"
+          FALLBACK_SOURCES: ""          # при сбое Яндекса поставить "b2b"
           SOURCE_BUDGET: "90"
         run: python cloud/relay.py
 
