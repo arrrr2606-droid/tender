@@ -179,13 +179,16 @@ async def fallback(cfg, state: State, tg: Telegram):
     from monitor import main as m
 
     cfg.sources = {cls.name: cls.name in names for cls in m.ALL}
-    # отдельный учёт «первого запуска» для запасного сбора
+    # Свой учёт «первого запуска» в отдельном файле: state.json при каждом запуске
+    # перезаписывается настройками из хранилища Яндекса.
+    marks = DATA / "fallback.json"
+    initialized = json.loads(marks.read_text()) if marks.exists() else []
     real_init = state.data.get("initialized_sources", [])
-    state.data["initialized_sources"] = state.data.get("fallback_initialized", [])
+    state.data["initialized_sources"] = list(initialized)
     try:
         await m.run_cycle(cfg, state, Storage(DATA / "fallback.sqlite"), tg)
     finally:
-        state.data["fallback_initialized"] = state.data["initialized_sources"]
+        marks.write_text(json.dumps(state.data["initialized_sources"]))
         state.data["initialized_sources"] = real_init
         state.save()
 

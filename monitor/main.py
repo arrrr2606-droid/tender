@@ -128,9 +128,9 @@ async def run_cycle(cfg, state, storage, tg, dry_run=False):
             to_send, rest = fresh[:FIRST_RUN_MAX], fresh[FIRST_RUN_MAX:]
             for lot in rest:
                 storage.mark(lot, notified=False)
-            if tg.enabled:
+            if tg.enabled and fresh:   # «сейчас 0 торгов» не присылаем — это шум
                 tail = (f" Присылаю {len(to_send)} самых свежих, остальные {len(rest)} отмечены как известные."
-                        if rest else (" Присылаю их." if to_send else ""))
+                        if rest else " Присылаю их.")
                 await tg.send(f"✅ {src.title}: сейчас {len(fresh)} актуальных подходящих торгов.{tail}")
 
         sent = 0

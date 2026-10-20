@@ -59,7 +59,7 @@ jobs:
           [ -f data/state.json ] || { echo "Нечего сохранять"; exit 0; }
           D="$RUNNER_TEMP/state"; rm -rf "$D"; mkdir -p "$D"
           cp data/state.json "$D"/
-          [ -f data/fallback.sqlite ] && cp data/fallback.sqlite "$D"/
+          for f in fallback.sqlite fallback.json; do [ -f "data/$f" ] && cp "data/$f" "$D"/; done
           cd "$D"
           git init -q -b state
           git config user.name "tender-monitor"
